@@ -72,6 +72,20 @@ export function computeDistribution(input: {
   const byId = new Map(beneficiaries.map((b) => [b.id, b]));
   const lines: DistributionLine[] = [];
 
+  // Refuse to compute against a dangling allocation.
+  //
+  // If an allocation names a beneficiary who isn't in the list — deleted, superseded, or any
+  // data-integrity slip — the alternative is to skip that line, which silently drops their share
+  // and produces a distribution that looks plausible but is short. In this domain a partial
+  // distribution presented as complete is far worse than a hard failure: somebody's inheritance
+  // quietly disappears and nothing surfaces it.
+  const missing = [...new Set(allocations.map((a) => a.beneficiaryId))].filter((id) => !byId.has(id));
+  if (missing.length > 0) {
+    throw new Error(
+      `Cannot compute distribution: allocation references unknown beneficiar${missing.length === 1 ? "y" : "ies"} ${missing.join(", ")}. Resolve the plan's beneficiary records before distributing.`,
+    );
+  }
+
   for (const asset of snapshot.assets) {
     // Asset-specific allocations override the plan-wide split.
     const scoped = allocations.filter((a) => a.scope === asset.id);
@@ -84,8 +98,8 @@ export function computeDistribution(input: {
     );
 
     for (const part of parts) {
-      const beneficiary = byId.get(part.id);
-      if (!beneficiary) continue;
+      // Non-null by the dangling-allocation guard above.
+      const beneficiary = byId.get(part.id)!;
       const alloc = applicable.find((a) => a.beneficiaryId === part.id)!;
       const formatted = formatAmount(
         { value: part.value, decimals: asset.decimals, symbol: asset.symbol },
@@ -130,6 +144,15 @@ export function computeDistribution(input: {
 
   const totalIndicativeValueUsd = lines.reduce((acc, l) => acc + l.indicativeValueUsd, 0);
 
+  // Defence in depth. The guard above should make this unreachable, but conservation is the one
+  // property that must never fail silently — returning a short distribution is worse than throwing.
+  const conserved = verifyConservation(snapshot, lines);
+  if (!conserved) {
+    throw new Error(
+      "Distribution failed conservation: the computed shares do not sum to the snapshot balance. Refusing to return a partial distribution.",
+    );
+  }
+
   return {
     snapshot,
     lines,
@@ -139,7 +162,7 @@ export function computeDistribution(input: {
       computedAt: snapshot.takenAt,
       assetCount: snapshot.assets.length,
       beneficiaryCount: byBeneficiary.length,
-      conservationChecked: verifyConservation(snapshot, lines),
+      conservationChecked: conserved,
       note: "Computed from a fixed snapshot. Reconcile against the estate inventory. This record is not a legal instrument and does not replace the executor's own accounting.",
     },
   };

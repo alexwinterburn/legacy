@@ -8,7 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { simulateSuccession, makeRule, validateAllocations, type RuleType } from "@legacy/succession";
+import { simulateSuccession, makeRule, validateAllocations } from "@legacy/succession";
 import { DEMO_NOW, demoAssets, demoBeneficiaries } from "@legacy/demo-data";
 import { problem } from "@/lib/api";
 
@@ -25,7 +25,16 @@ const Body = z.object({
       }),
     )
     .min(1),
-  ruleTypes: z.array(z.string()).default(["PERCENTAGE"]),
+  // Constrained to the real rule set. An unvalidated string would reach the tier resolver,
+  // which looks the type up in a record and would throw on a miss.
+  ruleTypes: z
+    .array(
+      z.enum([
+        "IMMEDIATE", "PERCENTAGE", "TIMELOCK_DELAY", "CONDITIONAL_KYC",
+        "DISPUTE_WINDOW", "AGE_BASED", "SCHEDULED", "TRUST_DIRECTED",
+      ]),
+    )
+    .default(["PERCENTAGE"]),
   withProofOfLifeAtStep: z.number().int().min(0).optional(),
 });
 
@@ -63,8 +72,21 @@ export async function POST(request: Request) {
     );
   }
 
+  // Allocations must name beneficiaries that exist, or the distribution engine (correctly)
+  // refuses to compute rather than returning a share-dropping partial result.
+  const knownIds = new Set(demoBeneficiaries.map((b) => b.id));
+  const unknown = [...new Set(allocations.map((a) => a.beneficiaryId))].filter((id) => !knownIds.has(id));
+  if (unknown.length > 0) {
+    return problem(
+      422,
+      "unknown-beneficiary",
+      "One or more allocations reference a beneficiary that does not exist.",
+      `Unknown: ${unknown.join(", ")}. Known beneficiaries in this demo: ${[...knownIds].join(", ")}.`,
+    );
+  }
+
   const rules = input.ruleTypes.map((t, i) =>
-    makeRule({ id: `rule-${i}`, type: t as RuleType, appliesToChains: ["bitcoin", "ethereum"], order: i }),
+    makeRule({ id: `rule-${i}`, type: t, appliesToChains: ["bitcoin", "ethereum"], order: i }),
   );
 
   const result = simulateSuccession({

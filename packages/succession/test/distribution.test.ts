@@ -88,6 +88,36 @@ describe("distribution", () => {
     expect(result.executorReconciliation.note).toMatch(/not a legal instrument/);
   });
 
+  it("refuses to compute when an allocation names a beneficiary that no longer exists", () => {
+    // Regression: this previously skipped the unknown line, silently dropping that share and
+    // returning a distribution that looked complete but was short by 50% of the estate.
+    // A partial distribution presented as complete is the worst possible failure here.
+    const dangling: readonly Allocation[] = [
+      { beneficiaryId: "christine", basisPoints: 5000, scope: "ALL" },
+      { beneficiaryId: "deleted-beneficiary", basisPoints: 5000, scope: "ALL" },
+    ];
+    expect(() => computeDistribution({ snapshot, allocations: dangling, beneficiaries })).toThrow(
+      /unknown beneficiary deleted-beneficiary/,
+    );
+  });
+
+  it("names every missing beneficiary, not just the first", () => {
+    const dangling: readonly Allocation[] = [
+      { beneficiaryId: "ghost-a", basisPoints: 5000, scope: "ALL" },
+      { beneficiaryId: "ghost-b", basisPoints: 5000, scope: "ALL" },
+    ];
+    expect(() => computeDistribution({ snapshot, allocations: dangling, beneficiaries })).toThrow(
+      /ghost-a, ghost-b/,
+    );
+  });
+
+  it("every returned distribution conserves the full balance", () => {
+    const result = computeDistribution({ snapshot, allocations, beneficiaries });
+    expect(result.executorReconciliation.conservationChecked).toBe(true);
+    const total = result.lines.reduce((acc, l) => acc + l.amount, 0n);
+    expect(total).toBe(btc.amount);
+  });
+
   it("is deterministic across repeated computation", () => {
     const a = computeDistribution({ snapshot, allocations, beneficiaries });
     const b = computeDistribution({ snapshot, allocations, beneficiaries });
