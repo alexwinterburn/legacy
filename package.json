@@ -1,0 +1,21 @@
+{
+  "name": "legacy-protocol",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Digital Legacy Network — trust-minimised succession infrastructure for digital wealth",
+  "packageManager": "pnpm@10.33.0",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "pnpm --filter @legacy/web dev",
+    "build": "pnpm --filter @legacy/web build",
+    "start": "pnpm --filter @legacy/web start",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit && pnpm --filter @legacy/web exec tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

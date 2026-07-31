@@ -1,0 +1,21 @@
+{
+  "name": "@legacy/demo-data",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@legacy/core": "workspace:*",
+    "@legacy/succession": "workspace:*",
+    "@legacy/death-verification": "workspace:*",
+    "@legacy/oracle": "workspace:*",
+    "@legacy/fraud": "workspace:*",
+    "@legacy/health": "workspace:*",
+    "@legacy/blockchain": "workspace:*",
+    "@legacy/bitcoin": "workspace:*"
+  }
+}

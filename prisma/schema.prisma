@@ -1,0 +1,630 @@
+// Authoritative production schema. See docs/DATABASE.md.
+//
+// NOT used by the demo runtime — the prototype runs from an in-memory seeded store so it can be
+// demonstrated anywhere without provisioning a database.
+//
+// Conventions:
+//   - Amounts are BigInt minor units. Never Float. Never Decimal-as-float.
+//   - Allocations are integer basis points (0..10000), never percentages.
+//   - Records that affect succession are versioned, never updated in place.
+//   - Fields marked `Bytes` are encrypted by the application before write.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  INVESTIGATING
+  DECEASED_CONFIRMED
+  SUSPENDED
+}
+
+enum PlatformRole {
+  ATTESTOR_ONLY
+  COSIGNER
+  // CUSTODIAN is deliberately absent — see docs/ARCHITECTURE.md §4.
+}
+
+model User {
+  id                 String       @id @default(cuid())
+  email              Bytes // encrypted
+  emailHash          String       @unique // deterministic hash for lookup
+  phone              Bytes?
+  countryOfResidence String
+  taxResidency       String[]
+  status             UserStatus   @default(ACTIVE)
+  platformRole       PlatformRole @default(ATTESTOR_ONLY)
+  dataResidency      String
+
+  // Distinct from lastSeenAt: this is a deliberate, authenticated act, and only this resets
+  // inactivity-based confidence. Passive telemetry must never look like proof of life.
+  lastProofOfLifeAt DateTime?
+  lastSeenAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  profile              Profile?
+  identityVerifications IdentityVerification[]
+  devices              Device[]
+  sessions             Session[]
+  securityEvents       SecurityEvent[]
+  wallets              Wallet[]
+  beneficiaries        Beneficiary[]
+  plans                SuccessionPlan[]
+  documents            Document[]
+  legacyMessages       LegacyMessage[]
+  trustedContacts      TrustedContact[]
+  subscription         Subscription?
+  auditEvents          AuditEvent[]
+  deathEvents          DeathEvent[]  @relation("SubjectDeathEvents")
+  fraudAlerts          FraudAlert[]
+  pendingChanges       PendingChange[]
+
+  @@index([status])
+  @@index([countryOfResidence])
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  displayName Bytes
+  dateOfBirth Bytes?
+  createdAt   DateTime @default(now())
+}
+
+model IdentityVerification {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider   String
+  status     String
+  evidenceRef String?
+  verifiedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, status])
+}
+
+model Device {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label        String
+  credentialId String   @unique // WebAuthn
+  publicKey    Bytes
+  lastUsedAt   DateTime?
+  createdAt    DateTime @default(now())
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String?
+  ipHash    String
+  country   String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model SecurityEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String
+  severity  String
+  metadata  Json
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model TrustedContact {
+  id       String  @id @default(cuid())
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name     Bytes
+  email    Bytes
+  // A trusted contact can EXTEND a cooling-off period but never shorten one. The asymmetry is
+  // the point: they can protect the user, never harm them.
+  verified Boolean @default(false)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Assets
+// ---------------------------------------------------------------------------------------------
+
+enum Chain {
+  bitcoin
+  ethereum
+  solana
+}
+
+enum VerificationState {
+  DECLARED
+  OBSERVED
+  PROVEN
+}
+
+model Wallet {
+  id                String            @id @default(cuid())
+  userId            String
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chain             Chain
+  address           String
+  label             String
+  descriptor        String? // Bitcoin output descriptor for policy-based wallets
+  verificationState VerificationState @default(DECLARED)
+  ownershipProofRef String?
+  addedAt           DateTime          @default(now())
+
+  assets Asset[]
+
+  @@unique([userId, chain, address])
+  @@index([chain, address])
+}
+
+model Asset {
+  id              String            @id @default(cuid())
+  walletId        String
+  wallet          Wallet            @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  chain           Chain
+  symbol          String
+  decimals        Int
+  contractAddress String?
+  declaredAmount  BigInt            @default(0)
+  observedAmount  BigInt            @default(0)
+  lastObservedAt  DateTime?
+  verificationState VerificationState @default(DECLARED)
+
+  snapshots AssetBalanceSnapshot[]
+
+  @@index([walletId])
+}
+
+model AssetBalanceSnapshot {
+  id        String   @id @default(cuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  amount    BigInt
+  takenAt   DateTime @default(now())
+
+  @@index([assetId, takenAt])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Beneficiaries — versioned, never updated in place
+// ---------------------------------------------------------------------------------------------
+
+model Beneficiary {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  version        Int      @default(1)
+  fullName       Bytes
+  dateOfBirth    Bytes?
+  relationship   String
+  country        String
+  email          Bytes
+  phone          Bytes?
+  identityRef    Bytes?
+  contactVerified Boolean @default(false)
+  destinations   Json     @default("{}") // { chain: address }
+
+  effectiveFrom DateTime  @default(now())
+  supersededById String?  @unique
+  supersededBy   Beneficiary? @relation("BeneficiaryVersions", fields: [supersededById], references: [id])
+  supersedes     Beneficiary? @relation("BeneficiaryVersions")
+
+  allocations   Allocation[]
+  verifications BeneficiaryVerification[]
+  distributions Distribution[]
+
+  @@index([userId, effectiveFrom])
+}
+
+model BeneficiaryVerification {
+  id            String   @id @default(cuid())
+  beneficiaryId String
+  beneficiary   Beneficiary @relation(fields: [beneficiaryId], references: [id], onDelete: Cascade)
+  kind          String
+  status        String
+  verifiedAt    DateTime?
+  createdAt     DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------------------------
+// Succession
+// ---------------------------------------------------------------------------------------------
+
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+}
+
+enum EnforcementTier {
+  CRYPTOGRAPHIC
+  ASSISTED
+  LEGAL
+}
+
+model SuccessionPlan {
+  id     String     @id @default(cuid())
+  userId String
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  version Int       @default(1)
+  status PlanStatus @default(DRAFT)
+
+  // Enforced by check constraint: >= 30. Can be raised, never lowered while a claim is open.
+  coolingOffDays          Int @default(60)
+  inactivityThresholdDays Int @default(180)
+  requiredConfidenceLevel Int @default(4)
+  requiredAttestors       Int @default(2)
+  requiredDistinctClasses Int @default(2)
+
+  // The health-score gate: a plan is not "green" until this is set.
+  continuityPackExportedAt DateTime?
+
+  effectiveFrom  DateTime @default(now())
+  supersededById String?  @unique
+
+  rules       SuccessionRule[]
+  allocations Allocation[]
+  deathEvents DeathEvent[]
+
+  @@index([userId, status])
+}
+
+model SuccessionRule {
+  id              String          @id @default(cuid())
+  planId          String
+  plan            SuccessionPlan  @relation(fields: [planId], references: [id], onDelete: Cascade)
+  type            String
+  // NOT NULL by design. A rule cannot exist without declaring how it is enforced.
+  enforcementTier EnforcementTier
+  config          Json            @default("{}")
+  appliesToChains Chain[]
+  order           Int             @default(0)
+
+  allocations Allocation[]
+
+  @@index([planId, order])
+}
+
+model Allocation {
+  id            String  @id @default(cuid())
+  planId        String
+  plan          SuccessionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  beneficiaryId String
+  beneficiary   Beneficiary    @relation(fields: [beneficiaryId], references: [id])
+  ruleId        String?
+  rule          SuccessionRule? @relation(fields: [ruleId], references: [id])
+
+  // Integer basis points. Sum must be exactly 10000 per (planId, scope) — enforced by a
+  // constraint trigger AND in the domain layer.
+  basisPoints Int
+  scope       String @default("ALL") // "ALL" or an assetId
+
+  @@unique([planId, beneficiaryId, scope])
+  @@index([planId, scope])
+}
+
+model PendingChange {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        String
+  payload     Json
+  // The 72-hour window. An attacker with an hour of account access cannot redirect an estate.
+  effectiveAt DateTime
+  cancelledAt DateTime?
+  appliedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, effectiveAt])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Death verification
+// ---------------------------------------------------------------------------------------------
+
+enum SuccessionState {
+  ACTIVE
+  INVESTIGATING
+  CORROBORATING
+  COOLING_OFF
+  EXECUTABLE
+  DISTRIBUTING
+  COMPLETED
+  FRAUD_HOLD
+}
+
+enum IndependenceClass {
+  CIVIL_REGISTRY
+  MEDICAL
+  JUDICIAL
+  FINANCIAL
+  SOCIAL
+  BEHAVIOURAL
+  PLATFORM
+}
+
+model DeathEvent {
+  id            String          @id @default(cuid())
+  subjectUserId String
+  subject       User            @relation("SubjectDeathEvents", fields: [subjectUserId], references: [id])
+  planId        String
+  plan          SuccessionPlan  @relation(fields: [planId], references: [id])
+
+  reportedBy      String
+  reporterType    String
+  reportedAt      DateTime        @default(now())
+  state           SuccessionState @default(INVESTIGATING)
+  confidenceLevel Int             @default(0)
+  confidenceScore Int             @default(0)
+  fraudScore      Int             @default(0)
+  coolingOffEndsAt DateTime?
+  // Distinct approver ids. Two are required to reach EXECUTABLE — invariant I5.
+  approvals       String[]
+  resolvedAt      DateTime?
+  resolution      String?
+
+  sources       VerificationSource[]
+  attestations  OracleAttestation[]
+  disputes      Dispute[]
+  fraudAlerts   FraudAlert[]
+  distributionPlan DistributionPlan?
+
+  @@index([state])
+  @@index([subjectUserId, reportedAt])
+}
+
+model VerificationSource {
+  id                String            @id @default(cuid())
+  deathEventId      String
+  deathEvent        DeathEvent        @relation(fields: [deathEventId], references: [id], onDelete: Cascade)
+  providerId        String
+  provider          VerificationProvider @relation(fields: [providerId], references: [id])
+  sourceType        String
+  // The field that makes Level 6 meaningful — invariant I8.
+  independenceClass IndependenceClass
+  submittedBy       String
+  submittedAt       DateTime          @default(now())
+  evidenceRef       String? // encrypted blob pointer
+
+  results VerificationResult[]
+
+  @@index([deathEventId])
+}
+
+model VerificationResult {
+  id         String   @id @default(cuid())
+  sourceId   String
+  source     VerificationSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  outcome    String // CONFIRMS | CONTRADICTS | INCONCLUSIVE
+  confidence Float
+  validFrom  DateTime
+  staleAfter DateTime?
+  verifiedBy String
+  notes      String?
+  createdAt  DateTime @default(now())
+}
+
+model OracleAttestation {
+  id           String   @id @default(cuid())
+  deathEventId String
+  deathEvent   DeathEvent @relation(fields: [deathEventId], references: [id], onDelete: Cascade)
+  payload      Json
+  payloadHash  String   @unique
+  signerKeyId  String
+  signature    String
+  signedAt     DateTime
+  publishedAt  DateTime
+  // publishedAt + publishDelay — invariant I7 (publish-then-act).
+  actionableAt DateTime
+  logIndex     Int
+  prevLogHash  String
+  logHash      String
+
+  @@index([deathEventId])
+  @@index([logIndex])
+}
+
+model Dispute {
+  id           String   @id @default(cuid())
+  deathEventId String
+  deathEvent   DeathEvent @relation(fields: [deathEventId], references: [id], onDelete: Cascade)
+  raisedBy     String
+  raisedByType String // SUBJECT | TRUSTED_CONTACT | BENEFICIARY
+  reason       String
+  state        String   @default("OPEN")
+  resolvedAt   DateTime?
+  outcome      String?
+  createdAt    DateTime @default(now())
+}
+
+model FraudAlert {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deathEventId String?
+  deathEvent   DeathEvent? @relation(fields: [deathEventId], references: [id])
+  ruleId       String
+  severity     String
+  score        Int
+  signals      Json
+  state        String   @default("OPEN")
+  raisedAt     DateTime @default(now())
+  reviewedBy   String?
+  outcome      String?
+
+  @@index([state, severity])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Distribution
+// ---------------------------------------------------------------------------------------------
+
+model DistributionPlan {
+  id           String   @id @default(cuid())
+  deathEventId String   @unique
+  deathEvent   DeathEvent @relation(fields: [deathEventId], references: [id])
+  computedAt   DateTime @default(now())
+  // Balances and prices fixed at computation time — a mid-distribution price move must not
+  // change what anyone receives.
+  snapshot     Json
+  executorReconciliationRecord Json
+
+  distributions Distribution[]
+}
+
+model Distribution {
+  id            String   @id @default(cuid())
+  planId        String
+  plan          DistributionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  beneficiaryId String
+  beneficiary   Beneficiary @relation(fields: [beneficiaryId], references: [id])
+  assetId       String
+  amount        BigInt
+  destinationAddress String
+  state         String   @default("PENDING")
+  artifactRef   String? // PSBT / calldata
+  txid          String?
+  confirmedAt   DateTime?
+
+  @@index([planId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Vault
+// ---------------------------------------------------------------------------------------------
+
+model Document {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       Bytes
+  category   String
+  sizeBytes  Int
+  // Ciphertext pointer. The DEK is threshold-split; the platform share alone is never sufficient.
+  blobRef    String
+  wrappedDek Bytes
+  releaseTo  Json
+  createdAt  DateTime @default(now())
+}
+
+model LegacyMessage {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       Bytes
+  mediaType   String // VIDEO | AUDIO | TEXT
+  blobRef     String
+  wrappedDek  Bytes
+  recipientId String?
+  releaseCondition Json
+  createdAt   DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------------------------
+// Commercial
+// ---------------------------------------------------------------------------------------------
+
+model Subscription {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier               String
+  status             String
+  currentPeriodEnd   DateTime?
+  externalCustomerId String?
+}
+
+model InstitutionalClient {
+  id        String   @id @default(cuid())
+  name      String
+  country   String
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+
+  apiKeys ApiKey[]
+}
+
+model ApiKey {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    InstitutionalClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  keyHash   String   @unique
+  scopes    String[]
+  lastUsedAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reference data
+// ---------------------------------------------------------------------------------------------
+
+model Country {
+  code              String  @id
+  name              String
+  verificationTier  String // AUTOMATED | PARTIAL | MANUAL
+  // Drives the plan-creation warning: local law may override chosen allocations entirely.
+  forcedHeirship    Boolean @default(false)
+  dataResidencyRegion String
+
+  providers VerificationProvider[]
+}
+
+model VerificationProvider {
+  id           String   @id @default(cuid())
+  countryCode  String
+  country      Country  @relation(fields: [countryCode], references: [code])
+  name         String
+  capabilities Json
+  status       String   @default("ACTIVE")
+  // Providers with degraded accuracy are automatically down-weighted rather than disabled.
+  accuracyScore Float   @default(1.0)
+  lastAssessedAt DateTime?
+
+  sources VerificationSource[]
+}
+
+// ---------------------------------------------------------------------------------------------
+// Audit — insert-only. UPDATE and DELETE are revoked at the database role level.
+// ---------------------------------------------------------------------------------------------
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  seq        BigInt   @unique
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  actorType  String
+  actorId    String
+  action     String
+  payload    Json
+  // hash = SHA256(seq ‖ prevHash ‖ canonicalJSON(payload) ‖ occurredAt)
+  prevHash   String
+  hash       String   @unique
+  occurredAt DateTime @default(now())
+
+  @@index([userId, occurredAt])
+  @@index([seq])
+}

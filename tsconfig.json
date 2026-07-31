@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "jsx": "preserve",
+    "paths": {
+      "@legacy/core": ["packages/core/src/index.ts"],
+      "@legacy/core/audit": ["packages/core/src/audit.ts"],
+      "@legacy/succession": ["packages/succession/src/index.ts"],
+      "@legacy/death-verification": ["packages/death-verification/src/index.ts"],
+      "@legacy/oracle": ["packages/oracle/src/index.ts"],
+      "@legacy/fraud": ["packages/fraud/src/index.ts"],
+      "@legacy/health": ["packages/health/src/index.ts"],
+      "@legacy/blockchain": ["packages/blockchain/src/index.ts"],
+      "@legacy/bitcoin": ["packages/bitcoin/src/index.ts"],
+      "@legacy/demo-data": ["packages/demo-data/src/index.ts"]
+    }
+  },
+  // The web app is typechecked by `next build`, which owns its own paths config (@/* -> src/*).
+  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts"],
+  "exclude": ["node_modules", "**/node_modules", "apps/web"]
+}
