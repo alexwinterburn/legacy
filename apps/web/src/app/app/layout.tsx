@@ -33,9 +33,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </Link>
             <div className="flex items-center gap-2.5 rounded-full border hairline bg-ink-900 py-1 pl-1 pr-3.5">
               <span className="flex size-7 items-center justify-center rounded-full bg-brass-500/20 text-xs font-medium text-brass-300">
-                {demoUser.fullName.split(" ").map((n) => n[0]).join("")}
+                {demoUser().fullName.split(" ").map((n) => n[0]).join("")}
               </span>
-              <span className="text-sm text-bone-200">{demoUser.fullName.split(" ")[0]}</span>
+              <span className="text-sm text-bone-200">{demoUser().fullName.split(" ")[0]}</span>
             </div>
           </div>
         </div>

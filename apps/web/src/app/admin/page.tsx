@@ -1,49 +1,92 @@
 import Link from "next/link";
-import { adminDeathEvents, fraudAlerts, platformMetrics } from "@legacy/demo-data";
+import { adminDeathEvents, fraudAlerts } from "@legacy/demo-data";
 import { coverageSummary } from "@legacy/death-verification";
+import { buildDunningQueue, computeRevenueMetrics, formatMoney, money } from "@legacy/billing";
 import { CoverageMap } from "@/components/dataviz";
-import { Badge, Dot, Eyebrow, Panel, Stat, formatDate, formatUsd } from "@/components/ui";
+import { ActionForm } from "@/components/form";
+import { Badge, Dot, Eyebrow, Panel, Rule, Stat, formatDate, formatDateTime } from "@/components/ui";
+import { runBillingCycleAction } from "@/lib/actions";
+import { getWorld } from "@/lib/store";
+
+export const dynamic = "force-dynamic";
 
 export default function AdminOverview() {
+  const world = getWorld();
+  const now = new Date().toISOString();
   const coverage = coverageSummary();
+  const metrics = computeRevenueMetrics({ subscriptions: world.subscriptions, invoices: world.invoices, now });
+  const dunning = buildDunningQueue({ invoices: world.invoices, subscriptions: world.subscriptions, now });
+
+  const totalProtected = world.users.reduce(
+    (acc, u) => acc + u.assets.reduce((a, x) => a + (Number(x.amount) / 10 ** x.decimals) * x.indicativeUnitPriceUsd, 0),
+    0,
+  );
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="display text-3xl text-bone-50">Platform</h1>
-        <p className="mt-2 text-sm text-bone-500">Demonstration data.</p>
+      <div className="flex flex-wrap items-end justify-between gap-6">
+        <div>
+          <h1 className="display text-3xl text-bone-50">Platform</h1>
+          <p className="mt-2 text-sm text-bone-500">
+            Live figures from the operational store. {world.users.length} accounts.
+          </p>
+        </div>
+        <ActionForm action={runBillingCycleAction} submitLabel="Run billing cycle" compact />
       </div>
 
-      {/* Metrics */}
+      {/* Commercial */}
       <Panel className="p-7">
+        <Eyebrow className="mb-6">Commercial</Eyebrow>
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="Users" value={platformMetrics.users.toLocaleString()} />
-          <Stat label="Active plans" value={platformMetrics.activePlans.toLocaleString()} />
+          <Stat label="MRR" value={formatMoney(money(metrics.mrrMinor))} sub="Normalised across intervals" />
+          <Stat label="ARR" value={formatMoney(money(metrics.arrMinor))} tone="brass" />
+          <Stat label="Paying subscribers" value={String(metrics.payingSubscribers)} tone="verified" />
           <Stat
-            label="Assets under plan"
-            value={formatUsd(platformMetrics.assetsProtectedUsd, { compact: true })}
-            sub="Indicative. Never held by us."
+            label="In collections"
+            value={String(dunning.length)}
+            tone={dunning.length > 0 ? "alert" : undefined}
+            sub={dunning.length > 0 ? formatMoney(money(dunning.reduce((a, q) => a + q.amountMinor, 0n))) + " at risk" : "All settled"}
           />
-          <Stat label="Countries covered" value={String(platformMetrics.countriesCovered)} />
         </div>
 
-        <div className="mt-8 grid gap-8 border-t hairline pt-8 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="Death events (all time)" value={String(platformMetrics.deathEventsAllTime)} />
-          <Stat label="Pending claims" value={String(platformMetrics.pendingClaims)} tone="brass" />
-          <Stat label="Open fraud alerts" value={String(platformMetrics.openFraudAlerts)} tone="alert" />
+        <Rule className="my-8" />
+
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat label="Trialing" value={String(metrics.trialingSubscribers)} />
+          <Stat label="Free" value={String(metrics.freeUsers)} />
+          <Stat label="Churn (30d)" value={`${metrics.churnRatePercent}%`} />
+          <Stat label="Collected" value={formatMoney(money(metrics.collectedMinor))} tone="verified" />
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-4 text-xs">
+          <Link href="/admin/subscriptions" className="text-brass-400 hover:text-brass-300">Subscriptions &rarr;</Link>
+          <Link href="/admin/payments" className="text-brass-400 hover:text-brass-300">Payments &rarr;</Link>
+          <Link href="/admin/dunning" className="text-brass-400 hover:text-brass-300">Dunning &rarr;</Link>
+        </div>
+        {world.lastBillingRunAt ? (
+          <p className="mt-4 text-xs text-bone-600">Last billing cycle {formatDateTime(world.lastBillingRunAt)}.</p>
+        ) : null}
+      </Panel>
+
+      {/* Protection */}
+      <Panel className="p-7">
+        <Eyebrow className="mb-6">Protection</Eyebrow>
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <Stat
-            label="False claims rejected"
-            value={String(platformMetrics.falseClaimsRejected)}
-            tone="verified"
-            sub="The metric that matters most"
+            label="Assets under plan"
+            value={`$${(totalProtected / 1_000_000).toFixed(2)}M`}
+            sub="Indicative. Never held by us."
           />
+          <Stat label="Countries covered" value={String(coverage.total)} />
+          <Stat label="Pending death claims" value={String(adminDeathEvents.filter((e) => e.state !== "EXECUTABLE").length)} tone="brass" />
+          <Stat label="Open fraud alerts" value={String(fraudAlerts.filter((f) => f.state !== "CLOSED").length)} tone="alert" />
         </div>
       </Panel>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Death event queue */}
+        {/* Death events */}
         <Panel className="overflow-hidden lg:col-span-2">
-          <div className="flex items-center justify-between px-7 py-5">
+          <div className="flex items-center justify-between px-6 py-4">
             <Eyebrow>Death events</Eyebrow>
             <Link href="/admin/death-events" className="text-xs text-bone-500 transition-colors hover:text-bone-200">
               All events &rarr;
@@ -73,7 +116,7 @@ export default function AdminOverview() {
                       <span className="tnum ml-2 text-xs text-bone-600">{e.confidenceScore}%</span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`tnum ${e.fraudScore >= 60 ? "text-alert" : e.fraudScore >= 25 ? "text-caution" : "text-bone-400"}`}>
+                      <span className={e.fraudScore >= 60 ? "text-alert" : e.fraudScore >= 25 ? "text-caution" : "text-bone-400"}>
                         {e.fraudScore}
                       </span>
                     </td>
@@ -87,29 +130,36 @@ export default function AdminOverview() {
           </div>
         </Panel>
 
-        {/* Fraud */}
+        {/* Staff activity */}
         <Panel className="p-7">
-          <div className="mb-5 flex items-center justify-between">
-            <Eyebrow>Fraud alerts</Eyebrow>
-            <Link href="/admin/fraud" className="text-xs text-bone-500 transition-colors hover:text-bone-200">
-              All &rarr;
-            </Link>
-          </div>
+          <Eyebrow className="mb-5">Recent staff actions</Eyebrow>
+          <p className="mb-5 text-xs leading-relaxed text-bone-600">
+            Every entry also appears in the affected customer&apos;s own timeline.
+          </p>
           <ul className="space-y-4">
-            {fraudAlerts.map((a) => (
+            {world.adminAudit.slice(0, 6).map((a) => (
               <li key={a.id} className="border-b hairline pb-4 last:border-0 last:pb-0">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-sm text-bone-100">{a.title}</p>
-                  <Badge tone={a.severity === "CRITICAL" ? "alert" : a.severity === "HIGH" ? "alert" : "caution"}>
-                    {a.score}
-                  </Badge>
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-mono text-xs text-brass-400">{a.action}</span>
+                  <span className="tnum text-xs text-bone-600">{formatDate(a.at)}</span>
                 </div>
-                <p className="mt-1.5 text-xs leading-relaxed text-bone-500">{a.detail}</p>
-                <p className="mt-2 text-xs text-bone-600">
-                  {a.userName} · {formatDate(a.raisedAt)}
+                <p className="mt-1.5 text-xs leading-relaxed text-bone-400">{a.detail}</p>
+                <p className="mt-1 text-xs text-bone-600">
+                  {a.actorId} · {a.actorRole}
+                  {a.targetUserId ? (
+                    <>
+                      {" · "}
+                      <Link href={`/admin/users/${a.targetUserId}`} className="hover:text-bone-400">
+                        {world.users.find((u) => u.id === a.targetUserId)?.fullName ?? a.targetUserId}
+                      </Link>
+                    </>
+                  ) : null}
                 </p>
               </li>
             ))}
+            {world.adminAudit.length === 0 ? (
+              <li className="text-sm text-bone-500">No staff actions recorded.</li>
+            ) : null}
           </ul>
         </Panel>
       </div>
@@ -137,7 +187,6 @@ export default function AdminOverview() {
 
 function stateTone(state: string): "verified" | "caution" | "alert" | "neutral" {
   if (state === "FRAUD_HOLD") return "alert";
-  if (state === "EXECUTABLE") return "caution";
-  if (state === "COOLING_OFF") return "caution";
+  if (state === "EXECUTABLE" || state === "COOLING_OFF") return "caution";
   return "neutral";
 }

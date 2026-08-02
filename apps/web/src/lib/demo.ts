@@ -1,9 +1,8 @@
 /**
- * Demo state layer.
+ * Read models over the live store.
  *
- * Runs entirely in memory so the prototype can be demonstrated anywhere — no database, no RPC,
- * no keys, no network. In production these functions become repository calls; the shapes they
- * return are the same, which is why every page consumes them rather than the raw demo data.
+ * Every page reads through these, so the moment a mutation lands the whole app reflects it.
+ * Previously this returned frozen fixtures; it now projects real mutable state.
  */
 
 import { totalIndicativeValue, validateAllocations } from "@legacy/succession";
@@ -11,88 +10,103 @@ import { computeHealth, type HealthResult } from "@legacy/health";
 import { assessConfidence, providerForCountry } from "@legacy/death-verification";
 import { assessFraud } from "@legacy/fraud";
 import { buildSuccessionPolicy, computeProofOfLife } from "@legacy/bitcoin";
-import {
-  DEMO_NOW,
-  PRICE_SNAPSHOT_AT,
-  buildDemoAuditChain,
-  demoAllocations,
-  demoAssets,
-  demoBeneficiaries,
-  demoEvidence,
-  demoPlan,
-  demoRules,
-  demoUser,
-  demoWallets,
-} from "@legacy/demo-data";
+import { entitlementFor } from "@legacy/billing";
+import { DEMO_NOW, PRICE_SNAPSHOT_AT } from "./seed";
+import { auditChain, invoicesFor, primaryUser, subscriptionFor } from "./store";
 
-export {
-  DEMO_NOW,
-  PRICE_SNAPSHOT_AT,
-  demoAllocations,
-  demoAssets,
-  demoBeneficiaries,
-  demoPlan,
-  demoRules,
-  demoUser,
-  demoWallets,
-  demoEvidence,
-};
+export { DEMO_NOW, PRICE_SNAPSHOT_AT };
 
-export function getProvider() {
-  return providerForCountry(demoUser.countryOfResidence, demoUser.countryName);
+export const OWNER_ID = "user-alex";
+
+export function owner() {
+  return primaryUser();
 }
 
-export function getHealth(overrides: { continuityPackExported?: boolean } = {}): HealthResult {
+export const demoUser = () => primaryUser();
+export const demoBeneficiaries = () => primaryUser().beneficiaries;
+export const demoAllocations = () => primaryUser().allocations;
+export const demoWallets = () => primaryUser().wallets;
+export const demoAssets = () => primaryUser().assets;
+export const demoRules = () => primaryUser().rules;
+export const demoPlan = () => primaryUser().plan;
+
+export function getProvider() {
+  const u = primaryUser();
+  return providerForCountry(u.countryOfResidence, u.countryName);
+}
+
+export function getSubscription() {
+  return subscriptionFor(OWNER_ID);
+}
+
+export function getEntitlement() {
+  const sub = subscriptionFor(OWNER_ID);
+  return sub ? entitlementFor(sub, new Date().toISOString()) : undefined;
+}
+
+export function getInvoices() {
+  return invoicesFor(OWNER_ID);
+}
+
+export function getHealth(): HealthResult {
+  const u = primaryUser();
   return computeHealth({
-    beneficiaryCount: demoBeneficiaries.length,
-    allocationBasisPoints: demoAllocations.reduce((acc, a) => acc + a.basisPoints, 0),
-    beneficiariesWithVerifiedContact: demoBeneficiaries.filter((b) => b.contactVerified).length,
-    walletCount: demoWallets.length,
-    provenWalletCount: demoWallets.filter((w) => w.verificationState === "PROVEN").length,
-    observedWalletCount: demoWallets.filter((w) => w.verificationState !== "DECLARED").length,
-    rules: demoRules,
-    continuityPackExportedAt: overrides.continuityPackExported ? "2026-07-01T00:00:00.000Z" : demoUser.continuityPackExportedAt,
+    beneficiaryCount: u.beneficiaries.length,
+    allocationBasisPoints: u.allocations.reduce((acc, a) => acc + a.basisPoints, 0),
+    beneficiariesWithVerifiedContact: u.beneficiaries.filter((b) => b.contactVerified).length,
+    walletCount: u.wallets.length,
+    provenWalletCount: u.wallets.filter((w) => w.verificationState === "PROVEN").length,
+    observedWalletCount: u.wallets.filter((w) => w.verificationState !== "DECLARED").length,
+    rules: u.rules,
+    continuityPackExportedAt: u.continuityPackExportedAt,
     countryVerificationTier: getProvider().tier,
-    passkeyEnabled: demoUser.passkeyEnabled,
-    mfaEnabled: demoUser.mfaEnabled,
-    registeredDeviceCount: demoUser.registeredDeviceCount,
-    lastProofOfLifeAt: demoUser.lastProofOfLifeAt,
-    proofOfLifeIntervalDays: demoPlan.proofOfLifeIntervalDays,
-    estateDocumentCount: demoUser.estateDocumentCount,
-    executorNominated: demoUser.executorNominated,
-    identityVerified: demoUser.identityVerified,
-    keysGeographicallySeparated: demoUser.keysGeographicallySeparated,
-    now: DEMO_NOW,
+    passkeyEnabled: u.passkeyEnabled,
+    mfaEnabled: u.mfaEnabled,
+    registeredDeviceCount: u.registeredDeviceCount,
+    lastProofOfLifeAt: u.lastProofOfLifeAt,
+    proofOfLifeIntervalDays: u.plan.proofOfLifeIntervalDays,
+    estateDocumentCount: u.estateDocumentCount,
+    executorNominated: u.executorNominated,
+    identityVerified: u.identityVerified,
+    keysGeographicallySeparated: u.keysGeographicallySeparated,
+    now: new Date().toISOString(),
   });
 }
 
 export function getPortfolioValue(): number {
-  return totalIndicativeValue(demoAssets);
+  return totalIndicativeValue(primaryUser().assets);
 }
 
 export function getAllocationStatus() {
-  const result = validateAllocations(demoAllocations);
-  return result.ok ? result.value : { totalBasisPoints: 0, remaining: 10_000, complete: false };
+  const allocations = primaryUser().allocations;
+  if (allocations.length === 0) {
+    return { totalBasisPoints: 0, remaining: 10_000, complete: false };
+  }
+  const result = validateAllocations(allocations);
+  if (result.ok) return result.value;
+  const total = allocations.reduce((acc, a) => acc + a.basisPoints, 0);
+  return { totalBasisPoints: total, remaining: 10_000 - total, complete: false };
 }
 
 export function getBitcoinPolicy() {
+  const u = primaryUser();
+  const heirs = u.beneficiaries.slice(0, 2).map((b, i) => ({
+    role: "HEIR" as const,
+    label: `${b.fullName.split(" ")[0]}'s key`,
+    keyExpression: `xpub…HEIR${i + 1}`,
+  }));
+
   return buildSuccessionPolicy({
     owner: { role: "OWNER", label: "Your key", keyExpression: "xpub…OWNER" },
-    heirs: [
-      { role: "HEIR", label: "Christine's key", keyExpression: "xpub…HEIR1" },
-      { role: "HEIR", label: "Arabella's key", keyExpression: "xpub…HEIR2" },
-    ],
-    inheritanceDelayDays: demoPlan.inheritanceDelayDays,
+    heirs: heirs.length > 0 ? heirs : [{ role: "HEIR", label: "Heir key", keyExpression: "xpub…HEIR1" }],
+    inheritanceDelayDays: u.plan.inheritanceDelayDays,
     fallbackDelayDays: 365,
-    heirThreshold: 2,
+    heirThreshold: Math.min(2, Math.max(1, heirs.length)),
   });
 }
 
-/**
- * Proof-of-life status for the demo wallet. Block heights are illustrative; the arithmetic
- * is the real implementation from @legacy/bitcoin.
- */
 export function getProofOfLife() {
+  const u = primaryUser();
   const currentBlock = 908_400;
   return computeProofOfLife({
     utxos: [
@@ -100,28 +114,42 @@ export function getProofOfLife() {
       { txid: "7e44…01af", confirmedAtBlock: currentBlock - 4_200, amountSats: 64_000_000n },
     ],
     currentBlock,
-    delayBlocks: demoPlan.inheritanceDelayDays * 144,
+    delayBlocks: u.plan.inheritanceDelayDays * 144,
     warnWithinDays: 60,
   });
 }
 
-/** Current confidence for the demo user — no death reported, so this should be level 0. */
 export function getCurrentConfidence() {
+  const u = primaryUser();
   return assessConfidence({
     evidence: [],
-    lastProofOfLifeAt: demoUser.lastProofOfLifeAt,
-    inactivityThresholdDays: demoPlan.inactivityThresholdDays,
-    now: DEMO_NOW,
+    lastProofOfLifeAt: u.lastProofOfLifeAt,
+    inactivityThresholdDays: u.plan.inactivityThresholdDays,
+    now: new Date().toISOString(),
     disputeOpen: false,
   });
 }
 
-/** Confidence as it would stand if the demo evidence were submitted. Used by the simulator. */
+export const demoEvidence = [
+  {
+    id: "ev-1", sourceType: "DEATH_CERTIFICATE", providerId: "za-default",
+    independenceClass: "CIVIL_REGISTRY" as const, outcome: "CONFIRMS" as const,
+    supportsLevel: 4 as const, quality: 0.92, recordedAt: "2026-07-20T10:00:00.000Z",
+    note: "Certified copy, authenticity checked against issuing office records.",
+  },
+  {
+    id: "ev-2", sourceType: "MEDICAL_CERTIFICATE", providerId: "za-default",
+    independenceClass: "MEDICAL" as const, outcome: "CONFIRMS" as const,
+    supportsLevel: 4 as const, quality: 0.88, recordedAt: "2026-07-22T14:30:00.000Z",
+    note: "Medical certificate of cause of death — independent of the civil registration chain.",
+  },
+];
+
 export function getSimulatedConfidence() {
   return assessConfidence({
     evidence: demoEvidence,
     lastProofOfLifeAt: "2026-07-15T00:00:00.000Z",
-    inactivityThresholdDays: demoPlan.inactivityThresholdDays,
+    inactivityThresholdDays: primaryUser().plan.inactivityThresholdDays,
     now: "2026-07-25T00:00:00.000Z",
     disputeOpen: false,
   });
@@ -146,7 +174,6 @@ export function getFraudBaseline() {
   });
 }
 
-/** The hostile scenario from the brief, scored by the real engine. */
 export function getFraudHostileScenario() {
   return assessFraud({
     now: DEMO_NOW,
@@ -169,14 +196,5 @@ export function getFraudHostileScenario() {
 }
 
 export function getTimeline() {
-  return buildDemoAuditChain();
-}
-
-export function getAssetsByChain() {
-  const map = new Map<string, typeof demoAssets>();
-  for (const asset of demoAssets) {
-    const existing = map.get(asset.chain);
-    map.set(asset.chain, existing ? ([...existing, asset] as typeof demoAssets) : ([asset] as unknown as typeof demoAssets));
-  }
-  return map;
+  return auditChain();
 }

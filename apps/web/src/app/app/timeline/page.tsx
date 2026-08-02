@@ -100,3 +100,6 @@ export default function TimelinePage() {
     </div>
   );
 }
+
+// Reads mutable store state, so it must not be statically prerendered.
+export const dynamic = "force-dynamic";

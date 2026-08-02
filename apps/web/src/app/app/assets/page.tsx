@@ -1,9 +1,9 @@
-import { formatAmount } from "@legacy/core";
+import { TOKENS, displayDecimalsFor, formatAmount } from "@legacy/core";
 import { adapterFor } from "@legacy/blockchain";
 import { DEVICE_COMPATIBILITY } from "@legacy/bitcoin";
+import { ActionButton, ActionForm, SelectField, TextField } from "@/components/form";
 import {
   Badge,
-  Button,
   Dot,
   Eyebrow,
   Panel,
@@ -13,9 +13,19 @@ import {
   formatDate,
   formatUsd,
 } from "@/components/ui";
+import {
+  addAssetAction,
+  addWalletAction,
+  proofOfLifeAction,
+  proveOwnershipAction,
+  removeAssetAction,
+  removeWalletAction,
+} from "@/lib/actions";
 import { demoAssets, demoWallets, getBitcoinPolicy, getProofOfLife } from "@/lib/demo";
 
 export default function AssetsPage() {
+  const wallets = demoWallets();
+  const assets = demoAssets();
   const policy = getBitcoinPolicy();
   const proofOfLife = getProofOfLife();
 
@@ -49,10 +59,16 @@ export default function AssetsPage() {
           <Eyebrow>Registered wallets</Eyebrow>
         </div>
         <div className="border-t hairline">
-          {demoWallets.map((w) => {
+          {wallets.length === 0 ? (
+            <p className="px-7 py-8 text-sm text-bone-500">
+              No wallets registered yet. Add one below — we only ever need a public address.
+            </p>
+          ) : null}
+
+          {wallets.map((w) => {
             const adapter = adapterFor(w.chain);
             const validation = adapter.validateAddress(w.address);
-            const assets = demoAssets.filter((a) => a.walletId === w.id);
+            const walletAssets = assets.filter((a) => a.walletId === w.id);
             return (
               <div key={w.id} className="border-b hairline p-7 last:border-0">
                 <div className="flex flex-wrap items-start justify-between gap-5">
@@ -73,26 +89,47 @@ export default function AssetsPage() {
                       {" · "}Proof scheme: {adapter.capabilities.ownershipProofScheme}
                     </p>
 
-                    {assets.length > 0 ? (
-                      <ul className="mt-4 flex flex-wrap gap-x-8 gap-y-2">
-                        {assets.map((a) => (
-                          <li key={a.id} className="text-sm">
+                    {walletAssets.length > 0 ? (
+                      <ul className="mt-4 space-y-2">
+                        {walletAssets.map((a) => (
+                          <li key={a.id} className="flex flex-wrap items-center gap-3 text-sm">
                             <span className="tnum text-bone-200">
-                              {formatAmount({ value: a.amount, decimals: a.decimals, symbol: a.symbol }, a.symbol === "USDC" ? 2 : 4)}
-                            </span>{" "}
-                            <span className="text-bone-500">{a.symbol}</span>{" "}
+                              {formatAmount({ value: a.amount, decimals: a.decimals, symbol: a.symbol }, displayDecimalsFor(a.symbol))}
+                            </span>
+                            <span className="text-bone-500">{a.symbol}</span>
                             <span className="tnum text-xs text-bone-600">
                               ≈ {formatUsd((Number(a.amount) / 10 ** a.decimals) * a.indicativeUnitPriceUsd)}
                             </span>
+                            <ActionButton
+                              action={removeAssetAction}
+                              label="Remove"
+                              variant="ghost"
+                              hidden={{ assetId: a.id }}
+                            />
                           </li>
                         ))}
                       </ul>
-                    ) : null}
+                    ) : (
+                      <p className="mt-4 text-xs text-bone-600">No holdings recorded on this wallet yet.</p>
+                    )}
                   </div>
 
-                  {w.verificationState !== "PROVEN" ? (
-                    <Button variant="secondary">Prove ownership</Button>
-                  ) : null}
+                  <div className="flex flex-col items-end gap-2">
+                    {w.verificationState !== "PROVEN" ? (
+                      <ActionButton
+                        action={proveOwnershipAction}
+                        label="Prove ownership"
+                        hidden={{ walletId: w.id }}
+                      />
+                    ) : null}
+                    <ActionButton
+                      action={removeWalletAction}
+                      label="Remove wallet"
+                      variant="ghost"
+                      confirm={`Remove ${w.label} and any holdings recorded against it?`}
+                      hidden={{ walletId: w.id }}
+                    />
+                  </div>
                 </div>
 
                 {w.descriptor ? (
@@ -106,6 +143,58 @@ export default function AssetsPage() {
           })}
         </div>
       </Panel>
+
+      {/* Add wallet + asset */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Panel className="p-7">
+          <Eyebrow className="mb-5">Register a wallet</Eyebrow>
+          <ActionForm action={addWalletAction} submitLabel="Register wallet" resetOnSuccess>
+            <div className="space-y-5">
+              <SelectField
+                name="chain"
+                label="Chain"
+                options={[
+                  { value: "bitcoin", label: "Bitcoin" },
+                  { value: "ethereum", label: "Ethereum" },
+                  { value: "solana", label: "Solana" },
+                ]}
+              />
+              <TextField
+                name="address"
+                label="Public address"
+                placeholder="bc1q… / 0x… / base58"
+                required
+                hint="Validated against the chain's real address format. We never ask for a private key."
+              />
+              <TextField name="label" label="Label" placeholder="Cold storage" />
+            </div>
+          </ActionForm>
+        </Panel>
+
+        <Panel className="p-7">
+          <Eyebrow className="mb-5">Record a holding</Eyebrow>
+          {wallets.length === 0 ? (
+            <p className="text-sm text-bone-500">Register a wallet first.</p>
+          ) : (
+            <ActionForm action={addAssetAction} submitLabel="Add holding" resetOnSuccess>
+              <div className="space-y-5">
+                <SelectField
+                  name="walletId"
+                  label="Wallet"
+                  options={wallets.map((w) => ({ value: w.id, label: `${w.label} (${w.chain})` }))}
+                />
+                <SelectField
+                  name="symbol"
+                  label="Asset"
+                  options={TOKENS.map((t) => ({ value: t.symbol, label: `${t.symbol} — ${t.name}` }))}
+                  hint="USDT, USDC and DAI are supported alongside BTC, ETH and SOL."
+                />
+                <TextField name="amount" label="Amount" placeholder="1.84" required hint="Decimal amount, e.g. 1.84 or 183000" />
+              </div>
+            </ActionForm>
+          )}
+        </Panel>
+      </div>
 
       {/* Bitcoin policy */}
       <Panel className="p-7">
@@ -167,7 +256,7 @@ export default function AssetsPage() {
               <span className="font-mono text-bone-500">{proofOfLife.earliestUnlockTxid}</span>.
             </p>
           </div>
-          <Button variant="secondary">Re-anchor (send to self)</Button>
+          <ActionButton action={proofOfLifeAction} label="Record proof of life" />
         </div>
       </Panel>
 
@@ -193,12 +282,8 @@ export default function AssetsPage() {
               {DEVICE_COMPATIBILITY.map((d) => (
                 <tr key={d.device} className="border-b hairline last:border-0">
                   <td className="px-7 py-3.5 text-bone-100">{d.device}</td>
-                  <td className="px-7 py-3.5">
-                    {d.taprootMultisig ? <Dot tone="verified" /> : <Dot tone="alert" />}
-                  </td>
-                  <td className="px-7 py-3.5">
-                    {d.miniscript ? <Dot tone="verified" /> : <Dot tone="caution" />}
-                  </td>
+                  <td className="px-7 py-3.5">{d.taprootMultisig ? <Dot tone="verified" /> : <Dot tone="alert" />}</td>
+                  <td className="px-7 py-3.5">{d.miniscript ? <Dot tone="verified" /> : <Dot tone="caution" />}</td>
                   <td className="px-7 py-3.5 text-xs text-bone-500">{d.note}</td>
                 </tr>
               ))}
@@ -210,10 +295,10 @@ export default function AssetsPage() {
       <Panel className="p-7">
         <Eyebrow className="mb-3">A note on balances</Eyebrow>
         <p className="max-w-3xl text-sm leading-relaxed text-bone-400">
-          This prototype runs with no RPC configured, so balances come from the demo dataset rather
-          than a live chain query. The adapters return <code className="font-mono text-xs text-bone-500">null</code>{" "}
-          rather than inventing a number — a balance we haven&apos;t actually observed shouldn&apos;t
-          look like one we have.
+          This prototype runs with no RPC configured, so balances come from what you record here
+          rather than a live chain query. The adapters return{" "}
+          <code className="font-mono text-xs text-bone-500">null</code> rather than inventing a
+          number — a balance we haven&apos;t actually observed shouldn&apos;t look like one we have.
         </p>
         <Rule className="my-5" />
         <p className="text-xs text-bone-600">
@@ -223,3 +308,6 @@ export default function AssetsPage() {
     </div>
   );
 }
+
+// Reads mutable store state, so it must not be statically prerendered.
+export const dynamic = "force-dynamic";

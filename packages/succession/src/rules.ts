@@ -181,6 +181,43 @@ export function validateAllocations(
   });
 }
 
+/**
+ * Validate a proposed allocation edit before it is written.
+ *
+ * Distinct from `validateAllocations`, which checks a stored plan. This checks user input, and
+ * in particular rejects a 0% share: a named beneficiary who inherits nothing is almost always a
+ * mistake — either they should be allocated something, or removed — and silently accepting it
+ * leaves someone in the plan who will be notified of a death and then receive nothing.
+ */
+export function validateAllocationInput(
+  input: readonly { readonly beneficiaryId: string; readonly basisPoints: number }[],
+): Result<{ totalBasisPoints: number }, string> {
+  if (input.length === 0) return err("Add at least one beneficiary before allocating shares.");
+
+  for (const a of input) {
+    if (!Number.isFinite(a.basisPoints)) return err("Shares must be numbers.");
+    if (!Number.isInteger(a.basisPoints)) return err("Shares are limited to two decimal places.");
+    if (a.basisPoints < 0) return err("A share cannot be negative.");
+    if (a.basisPoints === 0) {
+      return err(
+        "Every beneficiary needs a share above 0%. Give them an allocation, or remove them — otherwise they'd be notified of your death and inherit nothing.",
+      );
+    }
+  }
+
+  const ids = input.map((a) => a.beneficiaryId);
+  if (new Set(ids).size !== ids.length) return err("A beneficiary appears more than once.");
+
+  const total = input.reduce((acc, a) => acc + a.basisPoints, 0);
+  if (total !== BASIS_POINTS_TOTAL) {
+    return err(
+      `Allocations must total exactly 100%. They currently total ${(total / 100).toFixed(2)}%.`,
+    );
+  }
+
+  return ok({ totalBasisPoints: total });
+}
+
 /** Summarise how much of the plan is genuinely enforced by cryptography. */
 export function enforcementSummary(rules: readonly SuccessionRule[]): {
   cryptographic: number;

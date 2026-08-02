@@ -9,7 +9,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { simulateSuccession, makeRule, validateAllocations } from "@legacy/succession";
-import { DEMO_NOW, demoAssets, demoBeneficiaries } from "@legacy/demo-data";
+import { DEMO_NOW, demoAssets, demoBeneficiaries } from "@/lib/demo";
 import { problem } from "@/lib/api";
 
 const Body = z.object({
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
 
   // Allocations must name beneficiaries that exist, or the distribution engine (correctly)
   // refuses to compute rather than returning a share-dropping partial result.
-  const knownIds = new Set(demoBeneficiaries.map((b) => b.id));
+  const knownIds = new Set(demoBeneficiaries().map((b) => b.id));
   const unknown = [...new Set(allocations.map((a) => a.beneficiaryId))].filter((id) => !knownIds.has(id));
   if (unknown.length > 0) {
     return problem(
@@ -93,10 +93,10 @@ export async function POST(request: Request) {
     startAt: DEMO_NOW,
     coolingOffDays: input.coolingOffDays,
     requiredConfidenceLevel: input.requiredConfidenceLevel,
-    beneficiaries: demoBeneficiaries,
+    beneficiaries: demoBeneficiaries(),
     allocations,
     rules,
-    snapshot: { takenAt: DEMO_NOW, assets: demoAssets, note: "API simulation snapshot" },
+    snapshot: { takenAt: DEMO_NOW, assets: demoAssets(), note: "API simulation snapshot" },
     withProofOfLifeAtStep: input.withProofOfLifeAtStep,
   });
 

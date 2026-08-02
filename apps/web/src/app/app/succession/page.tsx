@@ -1,11 +1,13 @@
 import { ENFORCEMENT_TIER_META } from "@legacy/core";
 import { RULE_DEFINITIONS, enforcementSummary } from "@legacy/succession";
 import { adapterFor } from "@legacy/blockchain";
+import { ActionButton, ActionForm, CheckboxGroup, SelectField, TextField } from "@/components/form";
 import { Badge, Dot, Eyebrow, Panel, Rule, SectionHeading, TierBadge } from "@/components/ui";
+import { addRuleAction, removeRuleAction, updatePlanSettingsAction } from "@/lib/actions";
 import { demoPlan, demoRules } from "@/lib/demo";
 
 export default function SuccessionPage() {
-  const summary = enforcementSummary(demoRules);
+  const summary = enforcementSummary(demoRules());
   const btc = adapterFor("bitcoin");
   const eth = adapterFor("ethereum");
   const sol = adapterFor("solana");
@@ -39,33 +41,48 @@ export default function SuccessionPage() {
       {/* Plan settings */}
       <Panel className="p-7">
         <Eyebrow className="mb-5">Plan settings</Eyebrow>
-        <dl className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <Setting
-            label="Cooling-off period"
-            value={`${demoPlan.coolingOffDays} days`}
-            note="Can be extended by our risk team. Never shortened — by anyone, including you, once a claim is open."
-          />
-          <Setting
-            label="Required confidence"
-            value={`Level ${demoPlan.requiredConfidenceLevel}`}
-            note="Documentary evidence, checked. Nothing proceeds below this."
-          />
-          <Setting
-            label="Inactivity threshold"
-            value={`${demoPlan.inactivityThresholdDays} days`}
-            note="Silence alone is weak evidence — it can only reach level 1 or 2."
-          />
-          <Setting
-            label="Bitcoin backstop"
-            value={`${demoPlan.inheritanceDelayDays} days`}
-            note="Relative timelock. Resets whenever you move the coins."
-          />
-        </dl>
+        <ActionForm action={updatePlanSettingsAction} submitLabel="Save settings">
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <TextField
+              name="coolingOffDays"
+              label="Cooling-off period (days)"
+              type="number"
+              min={30}
+              max={365}
+              defaultValue={demoPlan().coolingOffDays}
+              hint="Minimum 30. Can be extended by our risk team; never shortened once a claim is open."
+            />
+            <TextField
+              name="inactivityThresholdDays"
+              label="Inactivity threshold (days)"
+              type="number"
+              min={30}
+              max={1825}
+              defaultValue={demoPlan().inactivityThresholdDays}
+              hint="Silence alone is weak evidence — it can only ever reach level 1 or 2."
+            />
+            <TextField
+              name="inheritanceDelayDays"
+              label="Bitcoin backstop (days)"
+              type="number"
+              min={30}
+              max={450}
+              defaultValue={demoPlan().inheritanceDelayDays}
+              hint="Relative timelock. Resets whenever you move the coins."
+            />
+          </div>
+        </ActionForm>
+        <Rule className="my-6" />
+        <Setting
+          label="Required confidence"
+          value={`Level ${demoPlan().requiredConfidenceLevel}`}
+          note="Documentary evidence, checked. Nothing proceeds below this. Raising it is a support request — lowering it is not offered."
+        />
       </Panel>
 
       {/* Rules */}
       <div className="space-y-4">
-        {demoRules.map((rule) => {
+        {demoRules().map((rule) => {
           const def = RULE_DEFINITIONS[rule.type];
           return (
             <Panel key={rule.id} className="p-7">
@@ -74,7 +91,15 @@ export default function SuccessionPage() {
                   <h3 className="display text-xl text-bone-50">{def.label}</h3>
                   <p className="mt-2.5 max-w-2xl text-sm leading-relaxed text-bone-400">{def.description}</p>
                 </div>
-                <TierBadge tier={rule.enforcementTier} />
+                <div className="flex flex-col items-end gap-3">
+                  <TierBadge tier={rule.enforcementTier} />
+                  <ActionButton
+                    action={removeRuleAction}
+                    label="Remove"
+                    variant="ghost"
+                    hidden={{ ruleId: rule.id }}
+                  />
+                </div>
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2">
@@ -101,6 +126,35 @@ export default function SuccessionPage() {
           );
         })}
       </div>
+
+      {/* Add rule */}
+      <Panel className="p-7">
+        <Eyebrow className="mb-5">Add a rule</Eyebrow>
+        <ActionForm action={addRuleAction} submitLabel="Add rule">
+          <div className="grid gap-6 sm:grid-cols-2">
+            <SelectField
+              name="ruleType"
+              label="Rule"
+              options={Object.values(RULE_DEFINITIONS).map((d) => ({ value: d.type, label: d.label }))}
+            />
+            <CheckboxGroup
+              name="chains"
+              label="Applies to"
+              options={[
+                { value: "bitcoin", label: "Bitcoin" },
+                { value: "ethereum", label: "Ethereum" },
+                { value: "solana", label: "Solana" },
+              ]}
+              defaultChecked={["bitcoin"]}
+            />
+          </div>
+          <p className="mt-4 max-w-2xl text-xs leading-relaxed text-bone-600">
+            The enforcement tier is computed from what the chains you pick can actually deliver, not
+            from what the rule is called. Pick Solana for a percentage split and it resolves to
+            executor-enforced, because Solana has no scripted succession.
+          </p>
+        </ActionForm>
+      </Panel>
 
       {/* Summary */}
       <Panel className="p-7">
@@ -187,3 +241,6 @@ function Setting({ label, value, note }: { label: string; value: string; note: s
     </div>
   );
 }
+
+// Reads mutable store state, so it must not be statically prerendered.
+export const dynamic = "force-dynamic";

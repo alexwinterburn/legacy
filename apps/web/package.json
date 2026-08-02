@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@legacy/billing": "workspace:*",
     "@legacy/bitcoin": "workspace:*",
     "@legacy/blockchain": "workspace:*",
     "@legacy/core": "workspace:*",

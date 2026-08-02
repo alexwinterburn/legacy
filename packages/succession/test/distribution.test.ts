@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseAmount, type Allocation, type AssetRecord, type Beneficiary } from "@legacy/core";
 import { computeDistribution, verifyConservation, type DistributionSnapshot } from "../src/distribution";
 import { simulateSuccession } from "../src/simulator";
-import { RULE_DEFINITIONS, enforcementSummary, makeRule, resolveTier, validateAllocations } from "../src/rules";
+import { RULE_DEFINITIONS, enforcementSummary, makeRule, resolveTier, validateAllocationInput, validateAllocations } from "../src/rules";
 
 const T0 = "2026-01-01T00:00:00.000Z";
 
@@ -150,6 +150,55 @@ describe("allocation validation", () => {
       ]).ok,
     ).toBe(false);
     expect(validateAllocations([{ beneficiaryId: "a", basisPoints: 0, scope: "ALL" }]).ok).toBe(false);
+  });
+});
+
+describe("allocation input validation", () => {
+  it("accepts an exact 100% split", () => {
+    const r = validateAllocationInput([
+      { beneficiaryId: "a", basisPoints: 5000 },
+      { beneficiaryId: "b", basisPoints: 5000 },
+    ]);
+    expect(r.ok).toBe(true);
+  });
+
+  it("rejects a 0% share rather than silently keeping a beneficiary who inherits nothing", () => {
+    // A named beneficiary on 0% would still be notified of a death and then receive nothing.
+    const r = validateAllocationInput([
+      { beneficiaryId: "a", basisPoints: 10_000 },
+      { beneficiaryId: "b", basisPoints: 0 },
+    ]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/above 0%/);
+  });
+
+  it("reports the actual total when it doesn't reach 100%", () => {
+    const r = validateAllocationInput([{ beneficiaryId: "a", basisPoints: 7550 }]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/75\.50%/);
+  });
+
+  it("rejects over-allocation", () => {
+    const r = validateAllocationInput([
+      { beneficiaryId: "a", basisPoints: 8000 },
+      { beneficiaryId: "b", basisPoints: 5000 },
+    ]);
+    expect(r.ok).toBe(false);
+  });
+
+  it("rejects negatives, duplicates and an empty list", () => {
+    expect(validateAllocationInput([]).ok).toBe(false);
+    expect(validateAllocationInput([{ beneficiaryId: "a", basisPoints: -100 }]).ok).toBe(false);
+    expect(
+      validateAllocationInput([
+        { beneficiaryId: "a", basisPoints: 5000 },
+        { beneficiaryId: "a", basisPoints: 5000 },
+      ]).ok,
+    ).toBe(false);
+  });
+
+  it("rejects fractional basis points from a too-precise input", () => {
+    expect(validateAllocationInput([{ beneficiaryId: "a", basisPoints: 10_000.5 }]).ok).toBe(false);
   });
 });
 

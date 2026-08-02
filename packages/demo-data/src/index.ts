@@ -26,6 +26,8 @@ export const INDICATIVE_PRICES = {
   BTC: 115_000,
   ETH: 4_100,
   USDC: 1,
+  USDT: 1,
+  DAI: 1,
   SOL: 190,
 } as const;
 
@@ -133,10 +135,18 @@ export const demoWallets: readonly WalletRecord[] = [
   {
     id: "wal-eth-2",
     chain: "ethereum",
-    address: "0x8ba1f109551bD432803012645Hac136c22C57B",
+    address: "0x8ba1f109551bD432803012645aC136c22C57B21",
     label: "Stablecoin account",
     verificationState: "OBSERVED",
     addedAt: "2026-06-02T11:30:00.000Z",
+  },
+  {
+    id: "wal-eth-3",
+    chain: "ethereum",
+    address: "0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE",
+    label: "Treasury account (USDT)",
+    verificationState: "PROVEN",
+    addedAt: "2026-07-04T08:15:00.000Z",
   },
 ];
 
@@ -174,6 +184,18 @@ export const demoAssets: readonly AssetRecord[] = [
     verificationState: "OBSERVED",
     lastObservedAt: PRICE_SNAPSHOT_AT,
     indicativeUnitPriceUsd: INDICATIVE_PRICES.USDC,
+  },
+  {
+    id: "asset-usdt",
+    walletId: "wal-eth-3",
+    chain: "ethereum",
+    symbol: "USDT",
+    decimals: 6,
+    contractAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+    amount: parseAmount("183000", 6, "USDT").value,
+    verificationState: "PROVEN",
+    lastObservedAt: PRICE_SNAPSHOT_AT,
+    indicativeUnitPriceUsd: INDICATIVE_PRICES.USDT,
   },
 ];
 

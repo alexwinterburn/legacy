@@ -15,12 +15,12 @@ import {
 export default function SimulateDeathPage() {
   const result = simulateSuccession({
     startAt: DEMO_NOW,
-    coolingOffDays: demoPlan.coolingOffDays,
-    requiredConfidenceLevel: demoPlan.requiredConfidenceLevel,
-    beneficiaries: demoBeneficiaries,
-    allocations: demoAllocations,
-    rules: demoRules,
-    snapshot: { takenAt: DEMO_NOW, assets: demoAssets, note: "Demo walkthrough snapshot" },
+    coolingOffDays: demoPlan().coolingOffDays,
+    requiredConfidenceLevel: demoPlan().requiredConfidenceLevel,
+    beneficiaries: demoBeneficiaries(),
+    allocations: demoAllocations(),
+    rules: demoRules(),
+    snapshot: { takenAt: DEMO_NOW, assets: demoAssets(), note: "Demo walkthrough snapshot" },
   });
 
   const fraud = getFraudBaseline();
@@ -52,7 +52,7 @@ export default function SimulateDeathPage() {
     manualSteps: [...result.manualSteps],
     fraudScore: fraud.score,
     fraudSeverity: fraud.severity,
-    coolingOffDays: demoPlan.coolingOffDays,
+    coolingOffDays: demoPlan().coolingOffDays,
   };
 
   return (
@@ -87,3 +87,6 @@ export default function SimulateDeathPage() {
     </div>
   );
 }
+
+// Reads mutable store state, so it must not be statically prerendered.
+export const dynamic = "force-dynamic";

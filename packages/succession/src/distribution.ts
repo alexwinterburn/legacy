@@ -11,6 +11,7 @@
  */
 
 import {
+  displayDecimalsFor,
   formatAmount,
   splitByBasisPoints,
   toFloat,
@@ -103,7 +104,7 @@ export function computeDistribution(input: {
       const alloc = applicable.find((a) => a.beneficiaryId === part.id)!;
       const formatted = formatAmount(
         { value: part.value, decimals: asset.decimals, symbol: asset.symbol },
-        asset.symbol === "USDC" || asset.symbol === "USDT" ? 2 : 4,
+        displayDecimalsFor(asset.symbol),
       );
       const destination = beneficiary.destinations?.[asset.chain];
       lines.push({

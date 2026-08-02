@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { brand, formatAmount } from "@legacy/core";
+import { brand, displayDecimalsFor, formatAmount } from "@legacy/core";
 import { STATE_META, enforcementSummary } from "@legacy/succession";
 import { CONFIDENCE_LEVEL_META } from "@legacy/death-verification";
 import { AllocationRing, CompositionBar, ScoreArc } from "@/components/dataviz";
+import { ActionButton } from "@/components/form";
 import { Badge, Button, Dot, Eyebrow, Panel, Rule, TierBadge, formatDate, formatUsd } from "@/components/ui";
+import { exportContinuityPackAction, proofOfLifeAction } from "@/lib/actions";
 import {
   PRICE_SNAPSHOT_AT,
   demoAllocations,
@@ -24,10 +26,10 @@ export default function DashboardPage() {
   const confidence = getCurrentConfidence();
   const proofOfLife = getProofOfLife();
   const provider = getProvider();
-  const enforcement = enforcementSummary(demoRules);
+  const enforcement = enforcementSummary(demoRules());
   const status = STATE_META.ACTIVE;
 
-  const composition = demoAssets.map((a, i) => ({
+  const composition = demoAssets().map((a, i) => ({
     label: a.symbol,
     value: Number(a.amount) / 10 ** a.decimals * a.indicativeUnitPriceUsd,
     color: ["var(--color-brass-400)", "var(--color-brass-300)", "var(--color-brass-500)"][i % 3]!,
@@ -68,7 +70,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="eyebrow mb-1.5">Last proof of life</p>
-                <span className="tnum text-sm text-bone-200">{formatDate(demoUser.lastProofOfLifeAt)}</span>
+                <span className="tnum text-sm text-bone-200">{formatDate(demoUser().lastProofOfLifeAt)}</span>
               </div>
             </div>
           </div>
@@ -100,7 +102,7 @@ export default function DashboardPage() {
                 company continuing to operate.
               </p>
             </div>
-            <Button href="/app/continuity">Export {brand.continuityPackName}</Button>
+            <ActionButton action={exportContinuityPackAction} label={`Export ${brand.continuityPackName}`} variant="primary" />
           </div>
         </Panel>
       ) : null}
@@ -118,8 +120,8 @@ export default function DashboardPage() {
           <div className="grid gap-8 sm:grid-cols-[auto_1fr] sm:items-center">
             <div className="flex justify-center">
               <AllocationRing
-                segments={demoAllocations.map((a) => ({
-                  label: demoBeneficiaries.find((b) => b.id === a.beneficiaryId)!.fullName,
+                segments={demoAllocations().map((a) => ({
+                  label: demoBeneficiaries().find((b) => b.id === a.beneficiaryId)!.fullName,
                   basisPoints: a.basisPoints,
                 }))}
                 size={168}
@@ -129,8 +131,8 @@ export default function DashboardPage() {
             </div>
 
             <ul className="space-y-4">
-              {demoAllocations.map((a, i) => {
-                const b = demoBeneficiaries.find((x) => x.id === a.beneficiaryId)!;
+              {demoAllocations().map((a, i) => {
+                const b = demoBeneficiaries().find((x) => x.id === a.beneficiaryId)!;
                 return (
                   <li key={a.beneficiaryId} className="border-b hairline pb-4 last:border-0 last:pb-0">
                     <div className="flex items-center justify-between gap-4">
@@ -176,9 +178,7 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <Button href="/app/assets" variant="secondary" className="mt-5 w-full">
-            Re-anchor wallet
-          </Button>
+          <ActionButton action={proofOfLifeAction} label="Record proof of life" className="mt-5" />
         </Panel>
       </div>
 
@@ -288,14 +288,14 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {demoAssets.map((a) => (
+              {demoAssets().map((a) => (
                 <tr key={a.id} className="border-b hairline last:border-0">
                   <td className="px-7 py-4">
                     <span className="text-bone-100">{a.symbol}</span>
                     <span className="ml-2 text-xs capitalize text-bone-600">{a.chain}</span>
                   </td>
                   <td className="tnum px-7 py-4 text-bone-200">
-                    {formatAmount({ value: a.amount, decimals: a.decimals, symbol: a.symbol }, a.symbol === "USDC" ? 2 : 4)}
+                    {formatAmount({ value: a.amount, decimals: a.decimals, symbol: a.symbol }, displayDecimalsFor(a.symbol))}
                   </td>
                   <td className="tnum px-7 py-4 text-bone-300">
                     {formatUsd((Number(a.amount) / 10 ** a.decimals) * a.indicativeUnitPriceUsd)}
@@ -321,7 +321,7 @@ export default function DashboardPage() {
           </Link>
         </div>
         <ul className="space-y-3">
-          {demoRules.map((r) => (
+          {demoRules().map((r) => (
             <li key={r.id} className="panel-inset flex flex-wrap items-center justify-between gap-3 p-4">
               <span className="text-sm text-bone-100">
                 {r.type.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase())}
@@ -334,3 +334,6 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+// Reads mutable store state, so it must not be statically prerendered.
+export const dynamic = "force-dynamic";

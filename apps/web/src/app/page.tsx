@@ -323,8 +323,8 @@ function Continuity() {
 
 function YourLegacy() {
   const value = getPortfolioValue();
-  const segments = demoAllocations.map((a) => ({
-    label: demoBeneficiaries.find((b) => b.id === a.beneficiaryId)?.fullName ?? a.beneficiaryId,
+  const segments = demoAllocations().map((a) => ({
+    label: demoBeneficiaries().find((b) => b.id === a.beneficiaryId)?.fullName ?? a.beneficiaryId,
     basisPoints: a.basisPoints,
   }));
 
@@ -353,8 +353,8 @@ function YourLegacy() {
               <Rule className="my-7" />
 
               <ul className="space-y-3.5">
-                {demoAllocations.map((a, i) => {
-                  const b = demoBeneficiaries.find((x) => x.id === a.beneficiaryId)!;
+                {demoAllocations().map((a, i) => {
+                  const b = demoBeneficiaries().find((x) => x.id === a.beneficiaryId)!;
                   return (
                     <li key={a.beneficiaryId} className="flex items-center justify-between gap-4">
                       <span className="flex items-center gap-3">

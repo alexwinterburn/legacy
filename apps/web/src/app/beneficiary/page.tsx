@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { friendlyNameFor } from "@legacy/core";
 import { computeDistribution } from "@legacy/succession";
 import { Wordmark } from "@/components/site-chrome";
 import { Badge, Button, Dot, Eyebrow, LegalNote, Panel, Rule, formatUsd } from "@/components/ui";
@@ -12,9 +13,9 @@ import { DEMO_NOW, demoAllocations, demoAssets, demoBeneficiaries, demoUser } fr
  */
 export default function BeneficiaryPortal() {
   const distribution = computeDistribution({
-    snapshot: { takenAt: DEMO_NOW, assets: demoAssets, note: "Claim snapshot" },
-    allocations: demoAllocations,
-    beneficiaries: demoBeneficiaries,
+    snapshot: { takenAt: DEMO_NOW, assets: demoAssets(), note: "Claim snapshot" },
+    allocations: demoAllocations(),
+    beneficiaries: demoBeneficiaries(),
   });
 
   const christine = distribution.byBeneficiary.find((b) => b.beneficiaryName.startsWith("Christine"))!;
@@ -40,7 +41,7 @@ export default function BeneficiaryPortal() {
         {/* Opening */}
         <div className="animate-rise">
           <p className="display text-3xl leading-snug text-bone-50 sm:text-4xl">
-            {demoUser.fullName} has left you a digital legacy.
+            {demoUser().fullName} has left you a digital legacy.
           </p>
           <p className="mt-5 max-w-2xl text-base leading-relaxed text-bone-400">
             We know this is a difficult time. There&apos;s nothing you need to do today. When
@@ -60,7 +61,7 @@ export default function BeneficiaryPortal() {
                   <p className="tnum display text-3xl text-bone-50">
                     {l.formattedAmount} <span className="text-xl text-bone-400">{l.symbol}</span>
                   </p>
-                  <p className="mt-1 text-xs text-bone-600">{friendlyName(l.symbol)}</p>
+                  <p className="mt-1 text-xs text-bone-600">{friendlyNameFor(l.symbol)}</p>
                 </div>
                 <p className="tnum text-sm text-bone-300">≈ {formatUsd(l.indicativeValueUsd)}</p>
               </div>
@@ -166,15 +167,6 @@ export default function BeneficiaryPortal() {
   );
 }
 
-function friendlyName(symbol: string): string {
-  switch (symbol) {
-    case "BTC":
-      return "Bitcoin";
-    case "ETH":
-      return "Ethereum";
-    case "USDC":
-      return "US dollar stablecoin";
-    default:
-      return symbol;
-  }
-}
+// Reads mutable store state, so it must not be statically prerendered.
+export const dynamic = "force-dynamic";
+

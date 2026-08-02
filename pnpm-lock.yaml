@@ -20,6 +20,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@legacy/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@legacy/bitcoin':
         specifier: workspace:*
         version: link:../../packages/bitcoin
@@ -72,6 +75,12 @@ importers:
       tailwindcss:
         specifier: ^4.0.0
         version: 4.3.3
+
+  packages/billing:
+    dependencies:
+      '@legacy/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/bitcoin:
     dependencies:

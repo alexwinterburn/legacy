@@ -3,6 +3,7 @@ const nextConfig = {
   reactStrictMode: true,
   transpilePackages: [
     "@legacy/core",
+    "@legacy/billing",
     "@legacy/succession",
     "@legacy/death-verification",
     "@legacy/oracle",

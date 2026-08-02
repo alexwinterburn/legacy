@@ -11,6 +11,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@legacy/core/audit": r("./packages/core/src/audit.ts"),
+      "@legacy/billing": r("./packages/billing/src/index.ts"),
       "@legacy/core": r("./packages/core/src/index.ts"),
       "@legacy/succession": r("./packages/succession/src/index.ts"),
       "@legacy/death-verification": r("./packages/death-verification/src/index.ts"),

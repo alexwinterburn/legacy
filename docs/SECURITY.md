@@ -131,9 +131,35 @@ Retention limits and deletion workflows per jurisdiction.
 authorised on its own merits.
 
 **Least privilege:** admin roles `SUPPORT` (read), `VERIFIER` (record evidence), `RISK` (place
-holds, extend cooling-off), `OPERATOR` (second approval). **No superuser role exists.** No role can
-alter a plan or move funds. Production data access requires a ticket, is time-boxed, and is
-surfaced in the affected user's own timeline.
+holds, extend cooling-off), `OPERATOR` (second approval), `BILLING` (commercial operations).
+**No superuser role exists.** No role can alter a plan or move funds. Production data access
+requires a ticket, is time-boxed, and is surfaced in the affected user's own timeline.
+
+### The back-office boundary
+
+Staff have **complete** control over the commercial relationship and **none** over the succession
+mechanism. This split is what makes "never a sufficient party" architecture rather than marketing.
+
+| Staff can | Staff cannot |
+|---|---|
+| Suspend, reinstate or investigate an account | Edit beneficiaries or allocations |
+| Change tier, apply credit, set a discount | Declare a customer deceased |
+| Cancel, pause, resume, extend a trial | Shorten a cooling-off period |
+| Issue, void, retry and refund invoices | Release, move or freeze assets |
+| Reset MFA so a customer can re-enrol | Export a customer's Continuity Pack |
+| Record death evidence for the engine to score | Read Family Vault contents |
+| Run the billing cycle | Rank customers by portfolio value |
+
+The right-hand column is **not permission-gated — the functions are absent**, so a compromised
+admin session has nothing to escalate to. `FORBIDDEN_CAPABILITIES` in `apps/web/src/lib/admin.ts`
+renders that list inside the console itself, and a test asserts no such export exists.
+
+### Billing never touches succession
+
+Encoded in `entitlementFor` and asserted across every subscription status: a plan stays active,
+the Continuity Pack stays available, and beneficiaries can always claim — including when a
+subscription is `PAST_DUE`, in `GRACE`, or `CANCELED`. Non-payment costs features. It must never
+cost a family their inheritance.
 
 **Monitoring:** security events to a separate, append-only sink with independent retention.
 Alerting on: attestation signing outside expected rate, admin access to production data,

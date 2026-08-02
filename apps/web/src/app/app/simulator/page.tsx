@@ -13,25 +13,25 @@ import {
 } from "@/lib/demo";
 
 export default function SimulatorPage() {
-  const snapshot = { takenAt: DEMO_NOW, assets: demoAssets, note: "Simulation snapshot" };
+  const snapshot = { takenAt: DEMO_NOW, assets: demoAssets(), note: "Simulation snapshot" };
 
   const result = simulateSuccession({
     startAt: DEMO_NOW,
-    coolingOffDays: demoPlan.coolingOffDays,
-    requiredConfidenceLevel: demoPlan.requiredConfidenceLevel,
-    beneficiaries: demoBeneficiaries,
-    allocations: demoAllocations,
-    rules: demoRules,
+    coolingOffDays: demoPlan().coolingOffDays,
+    requiredConfidenceLevel: demoPlan().requiredConfidenceLevel,
+    beneficiaries: demoBeneficiaries(),
+    allocations: demoAllocations(),
+    rules: demoRules(),
     snapshot,
   });
 
   const vetoed = simulateSuccession({
     startAt: DEMO_NOW,
-    coolingOffDays: demoPlan.coolingOffDays,
-    requiredConfidenceLevel: demoPlan.requiredConfidenceLevel,
-    beneficiaries: demoBeneficiaries,
-    allocations: demoAllocations,
-    rules: demoRules,
+    coolingOffDays: demoPlan().coolingOffDays,
+    requiredConfidenceLevel: demoPlan().requiredConfidenceLevel,
+    beneficiaries: demoBeneficiaries(),
+    allocations: demoAllocations(),
+    rules: demoRules(),
     snapshot,
     withProofOfLifeAtStep: 4,
   });
@@ -252,3 +252,6 @@ export default function SimulatorPage() {
     </div>
   );
 }
+
+// Reads mutable store state, so it must not be statically prerendered.
+export const dynamic = "force-dynamic";

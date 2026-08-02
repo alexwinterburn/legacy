@@ -6,6 +6,7 @@
     "paths": {
       "@legacy/core": ["packages/core/src/index.ts"],
       "@legacy/core/audit": ["packages/core/src/audit.ts"],
+      "@legacy/billing": ["packages/billing/src/index.ts"],
       "@legacy/succession": ["packages/succession/src/index.ts"],
       "@legacy/death-verification": ["packages/death-verification/src/index.ts"],
       "@legacy/oracle": ["packages/oracle/src/index.ts"],

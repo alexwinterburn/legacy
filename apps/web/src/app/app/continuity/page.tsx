@@ -1,6 +1,8 @@
 import { brand } from "@legacy/core";
 import { ATTESTATION_SCHEMA } from "@legacy/oracle";
-import { Badge, Button, Dot, Eyebrow, Panel, Rule, SectionHeading } from "@/components/ui";
+import { ActionButton } from "@/components/form";
+import { Badge, Dot, Eyebrow, Panel, Rule, SectionHeading } from "@/components/ui";
+import { exportContinuityPackAction } from "@/lib/actions";
 import { getBitcoinPolicy, getHealth } from "@/lib/demo";
 
 export default function ContinuityPage() {
@@ -72,7 +74,7 @@ export default function ContinuityPage() {
                 around&rdquo;. We won&apos;t score that as green.
               </p>
             </div>
-            <Button>Export {brand.continuityPackName}</Button>
+            <ActionButton action={exportContinuityPackAction} label={`Export ${brand.continuityPackName}`} variant="primary" />
           </div>
         </Panel>
       ) : (
@@ -172,3 +174,6 @@ export function verifyAttestation(att, publicKeyPem, now) {
     </div>
   );
 }
+
+// Reads mutable store state, so it must not be statically prerendered.
+export const dynamic = "force-dynamic";

@@ -252,3 +252,8 @@ export function chainsSupportingScriptedSuccession(): readonly Chain[] {
     .filter((a) => a.capabilities.supportsScriptedSuccession)
     .map((a) => a.chain);
 }
+
+
+// Token registry lives in @legacy/core (shared domain data); re-exported for convenience.
+export { TOKENS, token, tryToken, tokensForChain, stablecoins, displayDecimalsFor, friendlyNameFor } from "@legacy/core";
+export type { TokenDefinition, TokenStandard } from "@legacy/core";
